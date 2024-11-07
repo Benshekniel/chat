@@ -21,24 +21,16 @@ $query = "SELECT * FROM message WHERE (sender = :sender AND receiver = :receiver
 $params = ['sender' => $sender, 'receiver' => $receiver];
 $messages = $DB->read($query, $params);
 
-$query = "SELECT sender, COUNT(*) as unseen_count FROM message WHERE receiver = :receiver AND seen = 0 GROUP BY sender";
-$params = ['receiver' => $receiver];
-$unseenMessages = $DB->read($query, $params);
-
 // Fetch the receiver's username
 $queryReceiver = "SELECT username FROM users WHERE id = :receiver";
 $receiverData = $DB->read($queryReceiver, ['receiver' => $receiver]);
 
 // Check if receiver exists and get the username
-if ($receiverData) {
-   $receiverUsername = $receiverData[0]['username'];
-} else {
-   $receiverUsername = 'Unknown User';
-}
+$receiverUsername = $receiverData ? $receiverData[0]['username'] : 'Unknown User';
 
+// Prepare the response
 echo json_encode([
    "status" => "success",
    "username" => $receiverUsername,
    "messages" => $messages,
-   "unseenMessages" => $unseenMessages
 ]);

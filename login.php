@@ -8,11 +8,15 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
    $password = $_POST['password'];
 
    $DB = new Database();
-   $query = "SELECT * FROM users WHERE username = :username limit 1";
+   $query = "SELECT * FROM users WHERE username = :username LIMIT 1";
    $user = $DB->read($query, ['username' => $username]);
 
    if (count($user) > 0 && ($password === $user[0]['password'])) {
       $_SESSION['userid'] = $user[0]['id'];
+
+      // Update user state to 1 (logged in)
+      $updateStateQuery = "UPDATE users SET state = 1 WHERE id = :userid";
+      $DB->write($updateStateQuery, ['userid' => $_SESSION['userid']]);
 
       // Update messages as received
       $updateQuery = "UPDATE message SET received = 1 WHERE receiver = :receiver AND received = 0";
@@ -25,7 +29,6 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
    }
 }
 ?>
-
 
 <form method="POST">
    Username: <input type="text" name="username" required><br>

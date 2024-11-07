@@ -1,5 +1,4 @@
 <?php
-// index.php
 session_start();
 
 if (!isset($_SESSION['userid'])) {
@@ -11,12 +10,13 @@ require_once("Database.php");
 $DB = new Database();
 $currentUserId = $_SESSION['userid'];
 
-// Query to get users with the unseen status of the last message between them
+// Query to get users and unseen status of the last message
 $query = "SELECT users.*, 
-          (SELECT seen FROM message WHERE 
-           (sender = users.id AND receiver = :currentUserId) 
+          (SELECT seen FROM message 
+           WHERE (sender = users.id AND receiver = :currentUserId) 
            OR (sender = :currentUserId AND receiver = users.id) 
-           ORDER BY date DESC LIMIT 1) AS seen 
+           ORDER BY date DESC LIMIT 1) AS seen,
+          (SELECT COUNT(*) FROM message WHERE sender = users.id AND receiver = :currentUserId AND seen = 0) AS unseen_count
           FROM users";
 $users = $DB->read($query, ['currentUserId' => $currentUserId]);
 ?>
@@ -44,17 +44,17 @@ $users = $DB->read($query, ['currentUserId' => $currentUserId]);
                   <ul id="chat-list">
                      <?php foreach ($users as $user): ?>
                         <li>
-                           <div class="chat-item <?php echo (isset($user['seen']) && $user['seen'] == 0) ? 'unseen' : ''; ?>"
+                           <div class="chat-item <?php echo ($user['unseen_count'] > 0) ? 'unseen' : ''; ?>"
                               data-receiver-id="<?php echo $user['id']; ?>"
                               onclick="selectChat(this, <?php echo $user['id']; ?>)">
                               <div class="avatar"></div>
                               <div class="chat-info">
-                                 <h4><?php echo $user['username']; ?></h4>
-                                 <p>Sent attachment</p>
+                                 <h4><?php echo htmlspecialchars($user['username']); ?></h4>
+                                 <p class="chat-status"><?php echo $user['state'] ? 'Online' : 'Offline'; ?></p> <!-- Initial status -->
                               </div>
                               <div class="chat-side">
                                  <span class="time">9:00am</span>
-                                 <span class="circle"></span> <!-- Green circle for unseen messages -->
+                                 <span class="circle"></span> <!-- Indicator for unseen messages -->
                               </div>
                            </div>
                         </li>
@@ -67,7 +67,7 @@ $users = $DB->read($query, ['currentUserId' => $currentUserId]);
                      <div class="avatar"></div>
                      <div class="header-info">
                         <h4 id="chat-username">Select a user</h4>
-                        <p>Offline</p>
+                        <p id="chat-status">Offline</p> <!-- Status will be updated dynamically -->
                      </div>
                   </div>
                   <div class="chat-messages" id="chat-messages">
@@ -84,6 +84,100 @@ $users = $DB->read($query, ['currentUserId' => $currentUserId]);
    </div>
 
    <script src="assets/js/message.js"></script>
+   <script>
+      let selectedUserId = null; // Track the selected user ID globally
+
+      function selectChat(chatItem, userId) {
+         // Set selected user ID for status updates in the header
+         selectedUserId = userId;
+
+         // Update chat header with selected user's info
+         const username = chatItem.querySelector('.chat-info h4').textContent;
+         const userStatus = chatItem.querySelector('.chat-status').textContent;
+
+         document.getElementById('chat-username').textContent = username;
+         document.getElementById('chat-status').textContent = userStatus;
+
+         // Load messages when a user is selected (this could be done by fetching messages for the user)
+         startChat(userId);
+      }
+
+      function startChat(receiverId) {
+         // Load chat messages for the selected user
+         fetch(`get_messages.php?receiver=${receiverId}`)
+            .then(response => response.json())
+            .then(data => {
+               const chatMessages = document.getElementById("chat-messages");
+               chatMessages.innerHTML = '';
+               data.messages.forEach(message => {
+                  const div = document.createElement('div');
+                  div.classList.add('message', message.sender === receiverId ? 'received' : 'sent');
+                  div.innerHTML = `
+                     <p>${message.message}</p>
+                     <span class="time">${message.date}</span>
+                  `;
+                  chatMessages.appendChild(div);
+               });
+
+               chatMessages.scrollTop = chatMessages.scrollHeight; // Scroll to the latest message
+
+               const chatUsername = document.getElementById("chat-username");
+               chatUsername.innerText = data.username;
+            });
+      }
+
+      // Send message to the server
+      function sendMessage() {
+         const message = document.getElementById('message-input').value;
+
+         if (!selectedUserId) {
+            alert("Receiver ID is not set. Please select a chat.");
+            return;
+         }
+
+         fetch('send_message.php', {
+               method: 'POST',
+               body: new URLSearchParams({
+                  receiver: selectedUserId,
+                  message: message,
+               }),
+            })
+            .then(response => response.json())
+            .then(data => {
+               if (data.status === "success") {
+                  pollMessages(); // Fetch new messages immediately after sending
+                  document.getElementById('message-input').value = ''; // Clear the input
+               } else {
+                  alert('Error sending message');
+               }
+            });
+      }
+
+      function pollMessages() {
+         if (selectedUserId) {
+            fetch(`get_messages.php?receiver=${selectedUserId}`)
+               .then(response => response.json())
+               .then(data => {
+                  const chatMessages = document.getElementById("chat-messages");
+                  chatMessages.innerHTML = '';
+                  data.messages.forEach(message => {
+                     const div = document.createElement('div');
+                     div.classList.add('message', message.sender === selectedUserId ? 'received' : 'sent');
+                     div.innerHTML = `
+                        <p>${message.message}</p>
+                        <span class="time">${message.date}</span>
+                     `;
+                     chatMessages.appendChild(div);
+                  });
+
+                  chatMessages.scrollTop = chatMessages.scrollHeight; // Scroll to the latest message
+               });
+         }
+      }
+
+      // Set interval to poll unseen message counts every 5 seconds
+      setInterval(pollMessages, 5000);
+   </script>
 </body>
 
 </html>

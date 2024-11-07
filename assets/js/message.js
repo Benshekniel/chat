@@ -32,6 +32,24 @@ function startChat(receiverId) {
       });
 }
 
+function refreshUnseenCounts() {
+   fetch('get_unseen_counts.php')
+      .then(response => response.json())
+      .then(users => {
+         users.forEach(user => {
+            const chatItem = document.querySelector(`.chat-item[data-receiver-id="${user.id}"]`);
+            if (chatItem) {
+               if (user.unseen_count > 0) {
+                  chatItem.classList.add('unseen'); // Add unseen class if there are unseen messages
+               } else {
+                  chatItem.classList.remove('unseen'); // Remove unseen class if no unseen messages
+               }
+            }
+         });
+      })
+      .catch(error => console.error("Error fetching unseen counts:", error));
+}
+
 // Mark messages as seen when chat is opened
 function markMessagesAsSeen(receiverId) {
    fetch('mark_messages_seen.php', {
@@ -95,24 +113,7 @@ function pollMessages() {
    }
 }
 
-// Poll sidebar for unseen messages every 5 seconds
-function pollSidebar() {
-   fetch('get_unseen_messages.php')
-      .then(response => response.json())
-      .then(data => {
-         data.forEach(user => {
-            const chatItem = document.querySelector(`.chat-item[data-receiver-id="${user.id}"]`);
-            if (chatItem) {
-               if (user.unseen > 0) {
-                  chatItem.classList.add('unseen'); // Show green circle for unseen messages
-               } else {
-                  chatItem.classList.remove('unseen'); // Remove green circle if no unseen messages
-               }
-            }
-         });
-      });
-}
 
-// Set interval for polling messages and sidebar every 5 seconds
+// Set interval to poll unseen message counts every 5 seconds
+setInterval(refreshUnseenCounts, 5000);
 setInterval(pollMessages, 5000);
-setInterval(pollSidebar, 5000);
