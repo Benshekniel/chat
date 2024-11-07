@@ -10,14 +10,15 @@ require_once("Database.php");
 $DB = new Database();
 $currentUserId = $_SESSION['userid'];
 
-// Query to get users and unseen status of the last message
+// Query to get users and unseen status of the last message, excluding the logged-in user
 $query = "SELECT users.*, 
           (SELECT seen FROM message 
            WHERE (sender = users.id AND receiver = :currentUserId) 
            OR (sender = :currentUserId AND receiver = users.id) 
            ORDER BY date DESC LIMIT 1) AS seen,
           (SELECT COUNT(*) FROM message WHERE sender = users.id AND receiver = :currentUserId AND seen = 0) AS unseen_count
-          FROM users";
+          FROM users
+          WHERE users.id != :currentUserId";  // Exclude the logged-in user
 $users = $DB->read($query, ['currentUserId' => $currentUserId]);
 ?>
 
