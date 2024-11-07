@@ -178,6 +178,23 @@ $users = $DB->read($query, ['currentUserId' => $currentUserId]);
 
       // Set interval to poll unseen message counts every 5 seconds
       setInterval(pollMessages, 5000);
+
+      // Refresh user statuses every 5 seconds
+      setInterval(refreshUserStatuses, 5000);
+
+      function refreshUserStatuses() {
+         fetch('get_user_status.php')
+            .then(response => response.json())
+            .then(users => {
+               users.forEach(user => {
+                  const chatItem = document.querySelector(`.chat-item[data-receiver-id="${user.id}"]`);
+                  if (chatItem) {
+                     const statusElement = chatItem.querySelector('.chat-status');
+                     statusElement.textContent = user.state ? 'Online' : 'Offline';
+                  }
+               });
+            });
+      }
    </script>
 </body>
 
