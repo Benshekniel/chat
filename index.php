@@ -18,7 +18,7 @@ $query = "SELECT users.*,
            ORDER BY date DESC LIMIT 1) AS seen,
           (SELECT COUNT(*) FROM message WHERE sender = users.id AND receiver = :currentUserId AND seen = 0) AS unseen_count
           FROM users
-          WHERE users.id != :currentUserId";  // Exclude the logged-in user
+          WHERE users.id != :currentUserId";
 $users = $DB->read($query, ['currentUserId' => $currentUserId]);
 ?>
 
@@ -51,11 +51,11 @@ $users = $DB->read($query, ['currentUserId' => $currentUserId]);
                               <div class="avatar"></div>
                               <div class="chat-info">
                                  <h4><?php echo htmlspecialchars($user['username']); ?></h4>
-                                 <p class="chat-status"><?php echo $user['state'] ? 'Online' : 'Offline'; ?></p> <!-- Initial status -->
+                                 <p class="chat-status"><?php echo $user['state'] ? 'Online' : 'Offline'; ?></p>
                               </div>
                               <div class="chat-side">
                                  <span class="time">9:00am</span>
-                                 <span class="circle"></span> <!-- Indicator for unseen messages -->
+                                 <span class="circle"></span>
                               </div>
                            </div>
                         </li>
@@ -68,11 +68,10 @@ $users = $DB->read($query, ['currentUserId' => $currentUserId]);
                      <div class="avatar"></div>
                      <div class="header-info">
                         <h4 id="chat-username">Select a user</h4>
-                        <p id="chat-status">Offline</p> <!-- Status will be updated dynamically -->
+                        <p id="chat-status">Offline</p>
                      </div>
                   </div>
                   <div class="chat-messages" id="chat-messages">
-                     <!-- Messages will appear here -->
                   </div>
                   <div class="chat-input">
                      <input type="text" id="message-input" placeholder="Type a message">
@@ -84,27 +83,84 @@ $users = $DB->read($query, ['currentUserId' => $currentUserId]);
       </div>
    </div>
 
+   <!-- Popup Menu for Message Options -->
+   <div id="popup-menu" style="display: none; position: absolute; background: #fff; box-shadow: 0 4px 8px rgba(0,0,0,0.2); border-radius: 8px; padding: 10px;">
+      <ul style="list-style: none; padding: 0; margin: 0;">
+         <li onclick="deleteMessage()" style="padding: 8px; cursor: pointer;">
+            <i class="fas fa-trash-alt"></i> Delete
+         </li>
+      </ul>
+   </div>
+
    <script src="assets/js/message.js"></script>
    <script>
-      let selectedUserId = null; // Track the selected user ID globally
+      let selectedUserId = null;
+      let selectedMessage = null;
+
+      document.getElementById('chat-messages').addEventListener('contextmenu', function(event) {
+         event.preventDefault();
+         const target = event.target.closest('.message');
+         if (target) {
+            selectedMessage = target;
+            showPopupMenu(event.pageX, event.pageY);
+         }
+      });
+
+      function showPopupMenu(x, y) {
+         const popupMenu = document.getElementById('popup-menu');
+         popupMenu.style.left = `${x}px`;
+         popupMenu.style.top = `${y}px`;
+         popupMenu.style.display = 'block';
+         document.addEventListener('click', hidePopupMenu);
+      }
+
+      function hidePopupMenu() {
+         document.getElementById('popup-menu').style.display = 'none';
+         document.removeEventListener('click', hidePopupMenu);
+      }
+
+      function deleteMessage() {
+         if (selectedMessage) {
+            const confirmDelete = window.confirm("Are you sure you want to delete this message?");
+            if (confirmDelete) {
+               const messageId = selectedMessage.getAttribute('data-message-id');
+               const isSender = selectedMessage.classList.contains('sent');
+
+               fetch('delete_message.php', {
+                     method: 'POST',
+                     headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded'
+                     },
+                     body: new URLSearchParams({
+                        message_id: messageId,
+                        is_sender: isSender ? 1 : 0
+                     })
+                  })
+                  .then(response => response.json())
+                  .then(data => {
+                     if (data.status === "success") {
+                        pollMessages();
+                        hidePopupMenu();
+                     } else {
+                        alert('Error deleting message');
+                     }
+                  });
+            }
+         }
+      }
 
       function selectChat(chatItem, userId) {
-         // Set selected user ID for status updates in the header
          selectedUserId = userId;
-
-         // Update chat header with selected user's info
          const username = chatItem.querySelector('.chat-info h4').textContent;
          const userStatus = chatItem.querySelector('.chat-status').textContent;
 
          document.getElementById('chat-username').textContent = username;
          document.getElementById('chat-status').textContent = userStatus;
 
-         // Load messages when a user is selected (this could be done by fetching messages for the user)
          startChat(userId);
       }
 
       function startChat(receiverId) {
-         // Load chat messages for the selected user
          fetch(`get_messages.php?receiver=${receiverId}`)
             .then(response => response.json())
             .then(data => {
@@ -113,29 +169,24 @@ $users = $DB->read($query, ['currentUserId' => $currentUserId]);
                data.messages.forEach(message => {
                   const div = document.createElement('div');
                   div.classList.add('message', message.sender === receiverId ? 'received' : 'sent');
+                  div.setAttribute('data-message-id', message.id);
+
                   div.innerHTML = `
                      <p>${message.message}</p>
                      <span class="time">${message.date}</span>
                   `;
                   chatMessages.appendChild(div);
                });
-
-               chatMessages.scrollTop = chatMessages.scrollHeight; // Scroll to the latest message
-
-               const chatUsername = document.getElementById("chat-username");
-               chatUsername.innerText = data.username;
+               chatMessages.scrollTop = chatMessages.scrollHeight;
             });
       }
 
-      // Send message to the server
       function sendMessage() {
          const message = document.getElementById('message-input').value;
-
          if (!selectedUserId) {
-            alert("Receiver ID is not set. Please select a chat.");
+            alert("Please select a chat.");
             return;
          }
-
          fetch('send_message.php', {
                method: 'POST',
                body: new URLSearchParams({
@@ -146,8 +197,8 @@ $users = $DB->read($query, ['currentUserId' => $currentUserId]);
             .then(response => response.json())
             .then(data => {
                if (data.status === "success") {
-                  pollMessages(); // Fetch new messages immediately after sending
-                  document.getElementById('message-input').value = ''; // Clear the input
+                  pollMessages();
+                  document.getElementById('message-input').value = '';
                } else {
                   alert('Error sending message');
                }
@@ -164,22 +215,21 @@ $users = $DB->read($query, ['currentUserId' => $currentUserId]);
                   data.messages.forEach(message => {
                      const div = document.createElement('div');
                      div.classList.add('message', message.sender === selectedUserId ? 'received' : 'sent');
+                     div.setAttribute('data-message-id', message.id);
+
                      div.innerHTML = `
                         <p>${message.message}</p>
                         <span class="time">${message.date}</span>
                      `;
                      chatMessages.appendChild(div);
                   });
-
-                  chatMessages.scrollTop = chatMessages.scrollHeight; // Scroll to the latest message
+                  chatMessages.scrollTop = chatMessages.scrollHeight;
                });
          }
       }
 
-      // Set interval to poll unseen message counts every 5 seconds
       setInterval(pollMessages, 5000);
 
-      // Refresh user statuses every 5 seconds
       setInterval(refreshUserStatuses, 5000);
 
       function refreshUserStatuses() {
