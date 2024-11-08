@@ -16,6 +16,10 @@ $query = "SELECT users.*,
            WHERE (sender = users.id AND receiver = :currentUserId) 
            OR (sender = :currentUserId AND receiver = users.id) 
            ORDER BY date DESC LIMIT 1) AS seen,
+          (SELECT date FROM message 
+           WHERE (sender = users.id AND receiver = :currentUserId) 
+           OR (sender = :currentUserId AND receiver = users.id) 
+           ORDER BY date DESC LIMIT 1) AS last_message_date,
           (SELECT COUNT(*) FROM message WHERE sender = users.id AND receiver = :currentUserId AND seen = 0) AS unseen_count
           FROM users
           WHERE users.id != :currentUserId";
@@ -54,7 +58,13 @@ $users = $DB->read($query, ['currentUserId' => $currentUserId]);
                                  <p class="chat-status"><?php echo $user['state'] ? 'Online' : 'Offline'; ?></p>
                               </div>
                               <div class="chat-side">
-                                 <span class="time">9:00am</span>
+                                 <span class="time" id="time-<?php echo $user['id']; ?>">
+                                    <?php
+                                    echo !empty($user['last_message_date'])
+                                       ? date('d/m/Y', strtotime($user['last_message_date']))
+                                       : '';
+                                    ?>
+                                 </span>
                                  <span class="circle"></span>
                               </div>
                            </div>
@@ -228,9 +238,8 @@ $users = $DB->read($query, ['currentUserId' => $currentUserId]);
          }
       }
 
-      setInterval(pollMessages, 5000);
-
-      setInterval(refreshUserStatuses, 5000);
+      setInterval(pollMessages, 3000);
+      setInterval(refreshUserStatuses, 3000);
 
       function refreshUserStatuses() {
          fetch('get_user_status.php')
@@ -245,6 +254,23 @@ $users = $DB->read($query, ['currentUserId' => $currentUserId]);
                });
             });
       }
+
+      function updateChatTimestamps() {
+         fetch('get_last_message_dates.php')
+            .then(response => response.json())
+            .then(dates => {
+               dates.forEach(item => {
+                  const timeElement = document.getElementById(`time-${item.id}`);
+                  if (timeElement) {
+                     timeElement.textContent = item.date;
+                  }
+               });
+            })
+            .catch(error => console.error("Error updating timestamps:", error));
+      }
+
+      // Call the update function every 3 seconds
+      setInterval(updateChatTimestamps, 3000);
    </script>
 </body>
 
