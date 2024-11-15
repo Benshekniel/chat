@@ -10,7 +10,7 @@ require_once("Database.php");
 $DB = new Database();
 $currentUserId = $_SESSION['userid'];
 
-// Query to get users and unseen status of the last message, excluding the logged-in user
+// Query to get users with unseen messages first
 $query = "SELECT users.*, 
           (SELECT seen FROM message 
            WHERE (sender = users.id AND receiver = :currentUserId) 
@@ -20,9 +20,14 @@ $query = "SELECT users.*,
            WHERE (sender = users.id AND receiver = :currentUserId) 
            OR (sender = :currentUserId AND receiver = users.id) 
            ORDER BY date DESC LIMIT 1) AS last_message_date,
-          (SELECT COUNT(*) FROM message WHERE sender = users.id AND receiver = :currentUserId AND seen = 0) AS unseen_count
+          (SELECT COUNT(*) FROM message 
+           WHERE sender = users.id AND receiver = :currentUserId AND seen = 0) AS unseen_count
           FROM users
-          WHERE users.id != :currentUserId";
+          WHERE users.id != :currentUserId
+          ORDER BY 
+             unseen_count DESC,  -- Users with unseen messages come first
+             last_message_date DESC";  // Order by last message date if unseen count is the same
+
 $users = $DB->read($query, ['currentUserId' => $currentUserId]);
 ?>
 
@@ -271,6 +276,74 @@ $users = $DB->read($query, ['currentUserId' => $currentUserId]);
 
       // Call the update function every 3 seconds
       setInterval(updateChatTimestamps, 3000);
+
+      function updateReceivedState() {
+         fetch('update_received_state.php')
+            .catch(error => console.error("Error updating timestamps:", error));
+      }
+
+      // Call the update function every 3 seconds
+      setInterval(updateReceivedState, 3000);
+
+
+      function refreshUnseenCounts() {
+         fetch('get_unseen_counts.php')
+            .then(response => response.json())
+            .then(users => {
+               console.log("Fetched users:", users); // Debug: check fetched data
+
+               const chatList = document.getElementById('chat-list');
+               chatList.innerHTML = ''; // Clear current list
+
+               users.forEach(user => {
+                  // Create the HTML for each user item
+                  const unseenClass = user.unseen_count > 0 ? 'unseen' : '';
+                  const lastMessageDate = user.last_message_date ?
+                     new Date(user.last_message_date).toLocaleDateString('en-GB') :
+                     '';
+
+                  const chatItemHTML = `
+                  <li>
+                     <div class="chat-item ${unseenClass}" 
+                        data-receiver-id="${user.id}" 
+                        onclick="selectChat(this, ${user.id})">
+                        <div class="avatar"></div>
+                        <div class="chat-info">
+                           <h4>${user.username}</h4>
+                           <p class="chat-status">${user.state ? 'Online' : 'Offline'}</p>
+                        </div>
+                        <div class="chat-side">
+                           <span class="time" id="time-${user.id}">${lastMessageDate}</span>
+                           <span class="circle"></span>
+                        </div>
+                     </div>
+                  </li>
+               `;
+
+                  // Append each user item to the chat list
+                  chatList.insertAdjacentHTML('beforeend', chatItemHTML);
+               });
+            })
+            .catch(error => console.error("Error fetching unseen counts:", error));
+      }
+
+      // Set interval to poll unseen message counts every 3 seconds
+      setInterval(refreshUnseenCounts, 3000);
+
+
+
+      // Mark messages as seen when chat is opened
+      function markMessagesAsSeen(receiverId) {
+         fetch('mark_messages_seen.php', {
+            method: 'POST',
+            body: new URLSearchParams({
+               receiver: receiverId
+            })
+         }).then(() => {
+            const chatItem = document.querySelector(`.chat-item[data-receiver-id="${receiverId}"]`);
+            if (chatItem) chatItem.classList.remove('unseen'); // Remove unseen indicator
+         });
+      }
    </script>
 </body>
 
